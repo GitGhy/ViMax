@@ -187,6 +187,7 @@ class CameraImageGenerator:
         second_shot_visual_desc: str,
         first_shot_ff_path: str,
         progress=None,
+        request_state_path=None,
     ) -> VideoOutput:
 
         prompt = f"Two shots. The transition between the shots is a cut to. The style of the two shots should be consistent."
@@ -197,6 +198,7 @@ class CameraImageGenerator:
             prompt=prompt,
             reference_image_paths=reference_image_paths,
             progress=progress,
+            request_state_path=request_state_path,
         )
         return video_output
 

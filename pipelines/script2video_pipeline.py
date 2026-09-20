@@ -162,6 +162,8 @@ class Script2VideoPipeline:
                 )
                 break
             except Exception:
+                if getattr(self.chat_model, "_llm_type", None) == "ghyai":
+                    raise
                 camera_tree_path = os.path.join(self.working_dir, "camera_tree.json")
                 if os.path.exists(camera_tree_path):
                     os.remove(camera_tree_path)
@@ -368,6 +370,7 @@ class Script2VideoPipeline:
                         first_shot_visual_desc=shot_descriptions[parent_shot_idx].visual_desc,
                         second_shot_visual_desc=shot_descriptions[first_shot_idx].visual_desc,
                         first_shot_ff_path=parent_shot_ff_path,
+                        request_state_path=transition_video_path + ".ghyai.json",
                         progress=_scoped_progress(progress, camera_idx=camera.idx, shot_idx=first_shot_idx, parent_shot_idx=parent_shot_idx, artifact="transition_video"),
                     )
                     transition_video_output.save(transition_video_path)
@@ -513,6 +516,7 @@ class Script2VideoPipeline:
             video_output = await self.video_generator.generate_single_video(
                 prompt=shot_description.motion_desc + "\n" + shot_description.audio_desc,
                 reference_image_paths=frame_paths,
+                request_state_path=video_path + ".ghyai.json",
                 progress=_scoped_progress(progress, shot_idx=shot_description.idx, artifact="video_clip"),
             )
             video_output.save(video_path)

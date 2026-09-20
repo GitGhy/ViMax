@@ -146,6 +146,58 @@ class AgentLoopTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(any(event["type"] == "tool_result" for event in events))
             self.assertEqual(events[-2]["assistant"], "finished")
 
+    async def test_non_retryable_failure_stops_batch_and_further_tool_rounds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            index = SessionIndex(tmp)
+            attempts = []
+
+            def render(args):
+                attempts.append(args)
+                if len(attempts) == 1:
+                    return ToolResult("render", False, "图片请求结果未知，req_image_failure", {"retryable": False})
+                return ToolResult("render", True, "完成")
+
+            registry = ToolRegistry([ToolSpec("render", "渲染", render, schema={})])
+            llm = CapturingLLM([
+                AssistantMessage(tool_calls=[ToolCall(name="render"), ToolCall(name="render")]),
+                AssistantMessage(tool_calls=[ToolCall(name="render")]),
+                AssistantMessage(text="完成"),
+            ])
+            loop = AgentLoop(index, PromptBuilder(f"{tmp}/prompts", index, registry), registry, ToolExecutor(registry, index), llm)
+            events = [event async for event in loop.stream_events("生成视频")]
+            self.assertEqual(len(attempts), 1)
+            self.assertEqual(len(llm.calls), 1)
+            self.assertEqual(len([e for e in events if e["type"] == "tool_start"]), 1)
+            self.assertIn("req_image_failure", events[-2]["assistant"])
+            self.assertIn("已停止自动重试", events[-2]["assistant"])
+            self.assertEqual(index.active()["recent_turn_records"][-1]["status"], "failed")
+
+            # 新的用户操作可以再次执行；禁止重试只约束发生错误的当前轮次。
+            resumed = [event async for event in loop.stream_events("我已检查，请重新生成")]
+            self.assertEqual(len(attempts), 2)
+            self.assertEqual(resumed[-2]["assistant"], "完成")
+
+    async def test_retryable_or_unspecified_failure_can_continue(self):
+        for metadata in ({"retryable": True}, {}):
+            with self.subTest(metadata=metadata), tempfile.TemporaryDirectory() as tmp:
+                index = SessionIndex(tmp)
+                attempts = []
+
+                def render(args):
+                    attempts.append(args)
+                    return ToolResult("render", len(attempts) > 1, "渲染结果", metadata)
+
+                registry = ToolRegistry([ToolSpec("render", "渲染", render, schema={})])
+                llm = FakeLLM([
+                    AssistantMessage(tool_calls=[ToolCall(name="render")]),
+                    AssistantMessage(tool_calls=[ToolCall(name="render")]),
+                    AssistantMessage(text="完成"),
+                ])
+                loop = AgentLoop(index, PromptBuilder(f"{tmp}/prompts", index, registry), registry, ToolExecutor(registry, index), llm)
+                events = [event async for event in loop.stream_events("生成视频")]
+                self.assertEqual(len(attempts), 2)
+                self.assertEqual(events[-2]["assistant"], "完成")
+
     async def test_transient_tool_images_reach_next_llm_turn_but_not_events_or_history(self):
         with tempfile.TemporaryDirectory() as tmp:
             index = SessionIndex(tmp)

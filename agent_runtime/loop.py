@@ -94,6 +94,7 @@ class AgentLoop:
             runtime_messages.append({"role": "assistant", "content": assistant.text or "", "tool_calls": [_openai_tool_call(call) for call in assistant.tool_calls]})
             round_results: list[ToolResult] = []
             round_model_content: list[dict[str, Any]] = []
+            terminal_failure: ToolResult | None = None
 
             for call in assistant.tool_calls:
                 yield {"type": "tool_start", "turn_id": control.turn_id, "tool": call.as_dict()}
@@ -118,6 +119,10 @@ class AgentLoop:
                 runtime_messages.append({"role": "tool", "tool_call_id": call.id, "name": result.name, "content": json.dumps(result.as_dict(), ensure_ascii=False)})
                 if result.model_content:
                     round_model_content.extend(result.model_content)
+                # 请求结果可能未知，不能让模型绕过工具的禁止重试标记重新提交。
+                if not result.ok and result.metadata.get("retryable") is False:
+                    terminal_failure = result
+                    break
             if round_model_content:
                 runtime_messages.append(
                     {
@@ -133,6 +138,12 @@ class AgentLoop:
                 )
             tool_rounds.append({"tool_round": tool_round, "requested_tools": [call.as_dict() for call in assistant.tool_calls], "tool_results": [result.as_dict() for result in round_results]})
             transitions.append(_transition("executing_tools", "post_tool_decision", "tool_round_completed"))
+            if terminal_failure is not None:
+                status = "failed"
+                final_text = terminal_failure.content + "\n\n已停止自动重试，请先核对请求结果，再决定是否重新执行。"
+                transitions.append(_transition("post_tool_decision", "finalizing_answer", "non_retryable_tool_failure"))
+                yield {"type": "token", "turn_id": control.turn_id, "delta": final_text}
+                break
             transitions.append(_transition("post_tool_decision", "sampling_assistant", "runtime_continuation_after_tools"))
 
         self.history.extend([{"role": "user", "content": user_input}, {"role": "assistant", "content": final_text}])

@@ -1,7 +1,8 @@
 from typing import List, Optional, Literal
 import asyncio
 from pydantic import BaseModel, Field
-from tenacity import retry, stop_after_attempt
+from tenacity import stop_after_attempt
+from utils.retry import provider_retry as retry
 
 from langchain.chat_models.base import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate

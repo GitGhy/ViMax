@@ -761,6 +761,9 @@ function ConfigSectionEditor({definition, value, onChange}: {
   return (
     <section className="config-section">
       <header><h2>{definition.title}</h2><p>{definition.description}</p></header>
+      {definition.title === '视频生成' && /^https:\/\/ghy-ai\.com(?:\/|$)/i.test(value.base_url) && (
+        <p>光合云支持单张首帧图生视频；有参考图时上传首帧，尾帧不参与生成。没有参考图时使用文生视频。</p>
+      )}
       <div className="config-fields">
         {value.model_provider !== undefined && (
           <label><span>模型提供方</span><input value={value.model_provider} onChange={(event) => onChange('model_provider', event.target.value)} /></label>

@@ -35,6 +35,8 @@ const LABELS: Record<string, string> = {
   character_portrait_back_start: '正在生成角色背面照', character_portrait_back_done: '角色背面照已生成',
   video_create: '正在创建视频任务', video_task_created: '视频任务已创建', video_create_error: '视频任务创建失败',
   video_query_error: '视频状态查询失败', video_status: '视频生成状态',
+  video_reference_ignored: '文生视频模式', video_reference_ready: '首帧已就绪', video_last_frame_ignored: '尾帧不参与生成',
+  image_generation: '正在生成图片', image_completed: '图片生成完成',
   video_download_start: '正在下载视频', video_completed: '视频生成完成',
   novel_plan_text_artifacts: '规划小说文档', save_novel: '保存小说', compress_novel: '压缩小说',
   extract_events: '提取事件', retrieve_chunks: '检索相关片段', extract_scenes: '提取场景', merge_characters: '合并角色',

@@ -26,6 +26,10 @@ from tools.image_generator_openrouter_api import ImageGeneratorOpenRouterAPI
 from tools.reranker_bge_silicon_api import RerankerBgeSiliconapi
 from tools.video_generator_openrouter_api import VideoGeneratorOpenRouterAPI
 from tools.video_generator_veo_yunwu_api import VideoGeneratorVeoYunwuAPI
+from tools.image_generator_ghyai_api import ImageGeneratorGhyAIAPI
+from tools.video_generator_ghyai_api import VideoGeneratorGhyAIAPI
+from utils.ghyai import contains_ghyai_error
+from utils.ghyai_chat_model import DEFAULT_GHYAI_NARRATIVE_MAX_TOKENS, GhyAIChatModel
 
 from .config import api_provider_from_base_url, embedding_api_key, embedding_base_url, embedding_model, embedding_model_provider, image_api_key, image_base_url, image_model, llm_api_key, llm_base_url, llm_model, llm_model_provider, reranker_api_key, reranker_base_url, reranker_model, video_api_key, video_base_url, video_model, video_provider
 from .models import ToolResult
@@ -129,6 +133,7 @@ class ViMaxAdapters:
         style = style or str(session.get("style") or "").strip() or "Cinematic, coherent, 16:9"
         self._update_session_metadata(session_id, idea="", user_requirement="", style=style)
 
+        chat_model = None
         try:
             self.session_index.update_stage(session_id, "narrative_planning", "Generating structured text artifacts")
             if runtime:
@@ -202,7 +207,7 @@ class ViMaxAdapters:
                 "session_id": session_id,
                 "working_dir": str(working_dir.relative_to(self.workspace_root)),
                 "error_type": "recoverable_planning_step_failed",
-                "retryable": True,
+                "retryable": not contains_ghyai_error(exc) and getattr(chat_model, "_llm_type", None) != "ghyai",
                 "error": str(exc),
                 "present": [path for path, present in checklist.items() if present],
                 "missing": [path for path, present in checklist.items() if not present],
@@ -351,6 +356,7 @@ class ViMaxAdapters:
 
         self.session_index.update_stage(session_id, "rendering", "Rendering video artifacts")
         _write_render_status(working_dir, status="rendering", payload={"session_id": session_id, "render_started": True, "render_completed": False})
+        chat_model = None
         try:
             chat_model = _build_chat_model()
             image_generator = _build_image_generator()
@@ -405,7 +411,7 @@ class ViMaxAdapters:
             checklist = self.session_index.artifact_checklist(session_id)
             payload = {
                 "error_type": "render_failed",
-                "retryable": _is_retryable_render_error(unwrapped),
+                "retryable": _is_retryable_render_error(unwrapped) and getattr(chat_model, "_llm_type", None) != "ghyai",
                 "session_id": session_id,
                 "error": error_text,
                 "wrapped_error": wrapped_error_text,
@@ -535,11 +541,12 @@ def _llm_request_timeout_seconds() -> float:
 
 
 def _narrative_max_tokens() -> int:
-    raw = os.environ.get("VIMAX_NARRATIVE_MAX_TOKENS", "4096")
+    default = DEFAULT_GHYAI_NARRATIVE_MAX_TOKENS if api_provider_from_base_url(llm_base_url()) == "ghyai" else 4096
+    raw = os.environ.get("VIMAX_NARRATIVE_MAX_TOKENS", str(default))
     try:
         return max(256, int(raw))
     except ValueError:
-        return 4096
+        return default
 
 
 def _pipeline_progress(runtime: ToolRuntimeContext | None, session_id: str, *, scene_index: int | None = None):
@@ -560,6 +567,9 @@ def _build_chat_model() -> Any:
     api_key = llm_api_key()
     if not api_key:
         raise RuntimeError("VIMAX_LLM_API_KEY or configs/agent.local.yaml llm.api_key is required for narrative planning")
+    if api_provider_from_base_url(llm_base_url()) == "ghyai":
+        return GhyAIChatModel(model=llm_model(), api_key=api_key, base_url=llm_base_url(),
+                             timeout=_llm_request_timeout_seconds(), max_tokens=_narrative_max_tokens())
     return init_chat_model(
         model=llm_model(),
         model_provider=llm_model_provider(),
@@ -571,24 +581,28 @@ def _build_chat_model() -> Any:
     )
 
 
-def _build_image_generator() -> ImageGeneratorNanobananaYunwuAPI | ImageGeneratorOpenRouterAPI:
+def _build_image_generator() -> ImageGeneratorNanobananaYunwuAPI | ImageGeneratorOpenRouterAPI | ImageGeneratorGhyAIAPI:
     api_key = image_api_key()
     if not api_key:
         raise RuntimeError("VIMAX_IMAGE_API_KEY, VIMAX_LLM_API_KEY, or configs/agent.local.yaml image/llm api_key is required for image generation")
     model = image_model()
     base_url = image_base_url()
+    if api_provider_from_base_url(base_url) == "ghyai":
+        return ImageGeneratorGhyAIAPI(api_key=api_key, model=model, base_url=base_url)
     if api_provider_from_base_url(base_url) == "openrouter":
         return ImageGeneratorOpenRouterAPI(api_key=api_key, model=model, base_url=base_url)
     return ImageGeneratorNanobananaYunwuAPI(api_key=api_key, model=model, base_url=base_url)
 
 
-def _build_video_generator() -> VideoGeneratorVeoYunwuAPI | VideoGeneratorOpenRouterAPI:
+def _build_video_generator() -> VideoGeneratorVeoYunwuAPI | VideoGeneratorOpenRouterAPI | VideoGeneratorGhyAIAPI:
     api_key = video_api_key()
     if not api_key:
         raise RuntimeError("VIMAX_VIDEO_API_KEY, VIMAX_LLM_API_KEY, or configs/agent.local.yaml video/llm api_key is required for video generation")
     model = video_model()
     base_url = video_base_url()
     provider = video_provider().strip().lower()
+    if provider == "ghyai":
+        return VideoGeneratorGhyAIAPI(api_key=api_key, model=model, base_url=base_url)
     if provider == "openrouter":
         return VideoGeneratorOpenRouterAPI(api_key=api_key, model=model, base_url=base_url)
     if provider == "yunwu":
@@ -672,6 +686,8 @@ def _unwrap_retry_error(exc: Exception) -> Exception:
 
 
 def _is_retryable_render_error(exc: Exception) -> bool:
+    if contains_ghyai_error(exc):
+        return False
     text = str(exc).lower()
     if isinstance(exc, AttributeError):
         return False

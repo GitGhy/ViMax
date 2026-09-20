@@ -8,8 +8,9 @@ from typing import Any
 from uuid import uuid4
 
 from openai import APIConnectionError, APITimeoutError, AsyncOpenAI
+from utils.ghyai import GhyAIClient, is_ghyai_url
 
-from .config import llm_api_key, llm_base_url, llm_model
+from .config import config_value, llm_api_key, llm_base_url, llm_model
 from .models import ToolCall
 
 
@@ -47,9 +48,14 @@ class OpenAICompatibleLLM:
         self.api_key = api_key or llm_api_key()
         if not self.api_key:
             raise RuntimeError("VIMAX_LLM_API_KEY is required for the agent LLM client")
-        self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=LLM_REQUEST_TIMEOUT_SECONDS)
+        self.ghyai = GhyAIClient(self.api_key, self.base_url, timeout=LLM_REQUEST_TIMEOUT_SECONDS) if is_ghyai_url(self.base_url) else None
+        self.client = None if self.ghyai else AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, timeout=LLM_REQUEST_TIMEOUT_SECONDS)
 
     async def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> AssistantMessage:
+        if self.ghyai:
+            # 光合云聊天没有幂等重放保证，不进入通用 SDK/响应修复重试。
+            mode = config_value("llm", "tool_mode", env_names=["VIMAX_GHYAI_TOOL_MODE"], default="json")
+            return _assistant_message_from_response(await self.ghyai.chat(self.model, messages, tools=tools, tool_mode=mode))
         shape_attempts = [
             {"tools": tools or None, "tool_choice": "auto" if tools else None},
             {"tools": tools or None, "tool_choice": "auto" if tools else None},

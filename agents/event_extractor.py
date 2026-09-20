@@ -5,9 +5,10 @@ from typing import List
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from utils.robust_json_parser import TrailingCommaTolerantPydanticOutputParser as PydanticOutputParser
-from langchain.chat_models import init_chat_model
+from utils.ghyai_chat_model import init_compatible_chat_model as init_chat_model
 from pydantic import BaseModel, Field
-from tenacity import retry, stop_after_attempt
+from tenacity import stop_after_attempt
+from utils.retry import provider_retry as retry
 
 from interfaces import Event
 

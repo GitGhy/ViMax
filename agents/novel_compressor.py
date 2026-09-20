@@ -3,7 +3,7 @@ import logging
 import asyncio
 from typing import List, Tuple
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain.chat_models import init_chat_model
+from utils.ghyai_chat_model import init_compatible_chat_model as init_chat_model
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 

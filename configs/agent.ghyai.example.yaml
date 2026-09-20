@@ -1,0 +1,31 @@
+# 光合云示例。实际密钥只填写到被 Git 忽略的 configs/agent.local.yaml。
+# model_provider 保留 OpenAI 协议标识；运行时根据 ghy-ai.com 选择专用适配器。
+llm:
+  model_provider: openai
+  model: qwen3.8-flash
+  # 当前原生工具响应存在服务端投影错误，先使用模型已声明的 JSON 模式。
+  tool_mode: json
+  base_url: https://ghy-ai.com/v1
+  api_key: ''
+
+image:
+  model: doubao-seedream-5.0-lite
+  base_url: https://ghy-ai.com/v1
+  api_key: ''
+
+# 有参考图时使用单张首帧图生视频；无参考图时使用文生视频。尾帧不参与生成。
+video:
+  model: doubao-seedance-2.0
+  base_url: https://ghy-ai.com/v1
+  api_key: ''
+
+# 本次模型目录没有向量和重排接口；小说检索需要另外配置服务商。
+embedding:
+  model_provider: openai
+  model: ''
+  base_url: ''
+  api_key: ''
+reranker:
+  model: ''
+  base_url: ''
+  api_key: ''

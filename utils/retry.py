@@ -3,6 +3,22 @@ import traceback
 import logging
 
 import requests
+from utils.ghyai import contains_ghyai_error
+
+
+def provider_retry(*args, **kwargs):
+    """光合云聊天不自动重放；其他供应商保留原来的重试行为。"""
+    original = kwargs.get("retry", tenacity.retry_if_exception_type())
+    def allowed(state):
+        if state.outcome is None or not state.outcome.failed:
+            return False
+        owner = state.args[0] if state.args else None
+        model = getattr(owner, "chat_model", None)
+        if getattr(model, "_llm_type", None) == "ghyai":
+            return False
+        return not contains_ghyai_error(state.outcome.exception()) and original(state)
+    kwargs["retry"] = allowed
+    return tenacity.retry(*args, **kwargs)
 
 def after_func(retry_state: tenacity.RetryCallState) -> None:
     if retry_state.outcome.failed:

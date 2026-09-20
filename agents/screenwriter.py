@@ -5,7 +5,8 @@ from langchain_core.output_parsers import PydanticOutputParser
 from utils.robust_json_parser import TrailingCommaTolerantPydanticOutputParser as PydanticOutputParser
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import stop_after_attempt, wait_exponential
+from utils.retry import provider_retry as retry
 
 from utils.retry import after_func
 

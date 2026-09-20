@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import urlsplit
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -117,6 +118,8 @@ def video_api_key(workspace_root: str | Path = ".") -> str:
 
 def api_provider_from_base_url(base_url: str) -> str:
     normalized = base_url.strip().lower()
+    if urlsplit(normalized).hostname == "ghy-ai.com":
+        return "ghyai"
     if "openrouter.ai" in normalized:
         return "openrouter"
     if "yunwu.ai" in normalized:

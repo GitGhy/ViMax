@@ -1,6 +1,7 @@
 import logging
 from typing import List, Tuple
-from tenacity import retry, stop_after_attempt
+from tenacity import stop_after_attempt
+from utils.retry import provider_retry as retry
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
