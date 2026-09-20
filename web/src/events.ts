@@ -1,4 +1,5 @@
 import type {AgentEvent, ChatState, Message} from './types';
+import {activityLabel} from './activityLabels';
 
 export function createChatState(messages: Message[] = []): ChatState {
   return {messages, busy: false, turnId: '', promptTokens: 0};
@@ -41,7 +42,7 @@ export function applyAgentEvent(state: ChatState, event: AgentEvent): ChatState 
         tool: name,
         status: 'running',
         stage: 'starting',
-        text: 'Starting',
+        text: '正在启动',
       });
     }
     case 'tool_progress': {
@@ -51,7 +52,7 @@ export function applyAgentEvent(state: ChatState, event: AgentEvent): ChatState 
         tool: name,
         status: 'running',
         stage: event.progress?.stage || 'running',
-        text: event.progress?.message || humanize(event.progress?.stage || 'Running'),
+        text: event.progress?.message || humanize(event.progress?.stage || 'running'),
       });
     }
     case 'tool_result': {
@@ -62,7 +63,7 @@ export function applyAgentEvent(state: ChatState, event: AgentEvent): ChatState 
         tool: name,
         status: ok ? 'done' : 'error',
         stage: ok ? 'completed' : 'failed',
-        text: ok ? 'Completed' : cleanError(event.tool_result?.content || 'Tool failed'),
+        text: ok ? '已完成' : cleanError(event.tool_result?.content || '工具执行失败'),
       });
     }
     case 'terminal':
@@ -74,14 +75,14 @@ export function applyAgentEvent(state: ChatState, event: AgentEvent): ChatState 
           role: 'activity',
           status: 'error',
           tool: 'runtime',
-          text: cleanError(event.line || 'Runtime error'),
+          text: cleanError(event.line || '运行出错'),
         }],
       };
     case 'error':
       return {
         ...state,
         busy: false,
-        messages: [...state.messages, {id: `error-${turnId}-${Date.now()}`, role: 'error', text: event.message || 'Unknown agent error'}],
+        messages: [...state.messages, {id: `error-${turnId}-${Date.now()}`, role: 'error', text: event.message || '智能体发生未知错误'}],
       };
     case 'done': {
       const hasAssistant = state.messages.some((message) => message.id === `assistant-${turnId}`);
@@ -96,7 +97,7 @@ export function applyAgentEvent(state: ChatState, event: AgentEvent): ChatState 
         ...state,
         busy: false,
         messages: state.messages.map((message) => message.role === 'activity' && message.status === 'running'
-          ? {...message, status: 'error', stage: 'interrupted', text: event.message || 'Generation stopped'}
+          ? {...message, status: 'error', stage: 'interrupted', text: event.message || '生成已停止'}
           : message),
       };
     default:
@@ -140,10 +141,7 @@ function activityId(turnId: string, toolId: string | undefined, name: string) {
 }
 
 export function humanize(value: string) {
-  return value
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (letter) => letter.toUpperCase())
-    .replace(/\bVimax\b/g, 'ViMax');
+  return activityLabel(value);
 }
 
 function cleanError(value: string) {

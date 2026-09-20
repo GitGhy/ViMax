@@ -32,7 +32,7 @@ export async function uploadWorkspaceFile(sessionId: string, file: File) {
     body: file,
   });
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || `Upload failed with HTTP ${response.status}`);
+  if (!response.ok) throw new Error(payload.error || `上传失败（HTTP ${response.status}）`);
   return payload as {file: WorkspaceUpload};
 }
 
@@ -44,7 +44,7 @@ export async function getJsonArtifact(artifact: Artifact): Promise<JsonValue> {
   });
   const payload = await response.json();
   if (!response.ok) {
-    const message = payload && typeof payload === 'object' && 'error' in payload ? String(payload.error) : `Request failed with HTTP ${response.status}`;
+    const message = payload && typeof payload === 'object' && 'error' in payload ? String(payload.error) : `请求失败（HTTP ${response.status}）`;
     throw new Error(message);
   }
   return payload as JsonValue;
@@ -70,7 +70,7 @@ export function subscribeToEvents(onEvent: (event: AgentEvent) => void, onConnec
     try {
       onEvent(JSON.parse(message.data) as AgentEvent);
     } catch {
-      onEvent({type: 'error', message: 'Received an invalid event from the local bridge'});
+      onEvent({type: 'error', message: '收到本地服务发来的无效事件'});
     }
   };
   return () => source.close();
@@ -82,6 +82,6 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
     headers: {'Content-Type': 'application/json', ...(init.headers || {})},
   });
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || `Request failed with HTTP ${response.status}`);
+  if (!response.ok) throw new Error(payload.error || `请求失败（HTTP ${response.status}）`);
   return payload as T;
 }

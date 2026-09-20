@@ -12,20 +12,20 @@ describe('agent event mapping', () => {
     expect(state.busy).toBe(false);
   });
 
-  it('updates a running tool instead of appending every progress event', () => {
+  it('更新同一工具的运行状态并显示中文完成提示', () => {
     let state = createChatState();
     state = applyAgentEvent(state, {type: 'tool_start', turn_id: 'turn-1', tool: {id: 'tool-1', name: 'vimax_render_video'}});
     state = applyAgentEvent(state, {type: 'tool_progress', turn_id: 'turn-1', tool: {name: 'vimax_render_video'}, progress: {stage: 'generate_frames', message: 'Generating frames'}});
     state = applyAgentEvent(state, {type: 'tool_result', turn_id: 'turn-1', tool_result: {name: 'vimax_render_video', ok: true}});
     expect(state.messages).toHaveLength(1);
-    expect(state.messages[0]).toMatchObject({tool: 'vimax_render_video', status: 'done', text: 'Completed'});
+    expect(state.messages[0]).toMatchObject({tool: 'vimax_render_video', status: 'done', text: '已完成'});
   });
 
-  it('keeps each composer submission on one stdin line', () => {
+  it('保持提交内容为单行并使用中文工具名称', () => {
     expect(composeAgentPrompt('first line\nsecond line')).toBe('first line second line');
     expect(composeAgentPrompt('Use these references', ['uploads/script.txt', 'uploads/look.png']))
       .toBe('Use these references <workspace_uploads>["uploads/script.txt","uploads/look.png"]</workspace_uploads>');
-    expect(humanize('vimax_narrative_planning')).toBe('ViMax Narrative Planning');
+    expect(humanize('vimax_narrative_planning')).toBe('叙事规划');
   });
 
   it('ends running tools when the agent process stops', () => {

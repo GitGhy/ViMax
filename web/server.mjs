@@ -51,7 +51,7 @@ const server = createServer(async (request, response) => {
       const sessionId = url.searchParams.get('session') || '';
       const current = await readSessionState(repoRoot);
       if (!current.sessions.some((session) => session.sessionId === sessionId)) {
-        return sendJson(response, 404, {error: 'Project not found'});
+        return sendJson(response, 404, {error: '项目不存在'});
       }
       if (sessionId === activeSessionId) stopAgent('delete');
       const state = await deleteSession(repoRoot, sessionId);
@@ -73,11 +73,11 @@ const server = createServer(async (request, response) => {
       const fileName = url.searchParams.get('name') || '';
       const current = await readSessionState(repoRoot);
       if (!current.sessions.some((session) => session.sessionId === sessionId)) {
-        return sendJson(response, 404, {error: 'Project not found'});
+        return sendJson(response, 404, {error: '项目不存在'});
       }
       const declaredSize = Number(request.headers['content-length'] || 0);
       if (declaredSize > uploadMaxBytes) {
-        return sendJson(response, 413, {error: `File exceeds the ${formatByteLimit(uploadMaxBytes)} upload limit`});
+        return sendJson(response, 413, {error: `文件超过 ${formatByteLimit(uploadMaxBytes)} 的上传限制`});
       }
       const data = await readBinaryBody(request, uploadMaxBytes);
       const file = await storeWorkspaceUpload(repoRoot, sessionId, fileName, data);
@@ -88,7 +88,7 @@ const server = createServer(async (request, response) => {
       const sessionId = typeof body.sessionId === 'string' ? body.sessionId : '';
       const projectName = typeof body.projectName === 'string' ? body.projectName.trim() : '';
       if (projectName.length > 64) {
-        return sendJson(response, 400, {error: 'Project name must be 64 characters or fewer'});
+        return sendJson(response, 400, {error: '项目名称不能超过 64 个字符'});
       }
       await startAgent({newSession: body.newSession === true, sessionId, projectName});
       return sendJson(response, 200, {ok: true});
@@ -96,8 +96,8 @@ const server = createServer(async (request, response) => {
     if (url.pathname === '/api/messages' && request.method === 'POST') {
       const body = await readJsonBody(request);
       const text = String(body.text || '').trim();
-      if (!text) return sendJson(response, 400, {error: 'Message text is required'});
-      if (!agentProcess?.stdin.writable) return sendJson(response, 409, {error: 'Agent is not running'});
+      if (!text) return sendJson(response, 400, {error: '消息内容不能为空'});
+      if (!agentProcess?.stdin.writable) return sendJson(response, 409, {error: '智能体尚未启动'});
       agentProcess.stdin.write(`${text}\n`);
       return sendJson(response, 202, {ok: true});
     }
@@ -114,7 +114,7 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (vite) {
-      vite.middlewares(request, response, () => sendJson(response, 404, {error: 'Not found'}));
+      vite.middlewares(request, response, () => sendJson(response, 404, {error: '未找到请求的资源'}));
       return;
     }
     return serveProductionApp(response, url.pathname);
@@ -140,7 +140,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 async function startAgent({newSession, sessionId, projectName = ''}) {
-  if (newSession && sessionId) throw new Error('Choose either a new or existing session');
+  if (newSession && sessionId) throw new Error('新建会话和打开已有会话只能选择一项');
   stopAgent('switch');
   const {command, args} = agentCommand();
   const sessionArgs = newSession
@@ -156,7 +156,7 @@ async function startAgent({newSession, sessionId, projectName = ''}) {
   });
   agentProcess = child;
   let childStdoutBuffer = '';
-  broadcast({type: 'bridge_status', status: 'starting', message: newSession ? 'Creating workspace' : 'Opening workspace'});
+  broadcast({type: 'bridge_status', status: 'starting', message: newSession ? '正在创建工作区' : '正在打开工作区'});
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk) => {
     if (agentProcess !== child) return;
@@ -174,7 +174,7 @@ async function startAgent({newSession, sessionId, projectName = ''}) {
   });
   child.on('error', (error) => {
     if (agentProcess !== child) return;
-    broadcast({type: 'error', message: `Agent process error: ${error.message}`});
+    broadcast({type: 'error', message: `智能体进程出错：${error.message}`});
   });
   child.on('exit', (code, signal) => {
     if (agentProcess !== child) return;
@@ -182,7 +182,7 @@ async function startAgent({newSession, sessionId, projectName = ''}) {
     broadcast({
       type: 'bridge_status',
       status: code === 0 || signal === 'SIGTERM' ? 'stopped' : 'error',
-      message: signal ? `Agent stopped by ${signal}` : `Agent exited with code ${code ?? 0}`,
+      message: signal ? `智能体因 ${signal} 信号停止` : `智能体已退出，退出码：${code ?? 0}`,
     });
   });
   setTimeout(async () => {
@@ -190,7 +190,7 @@ async function startAgent({newSession, sessionId, projectName = ''}) {
     const state = await readSessionState(repoRoot);
     activeSessionId = state.activeSessionId || sessionId || activeSessionId;
     broadcast({type: 'sessions_changed', ...state, activeSessionId});
-    broadcast({type: 'bridge_status', status: 'ready', message: 'Agent ready'});
+    broadcast({type: 'bridge_status', status: 'ready', message: '智能体已就绪'});
   }, 350);
 }
 
@@ -215,7 +215,7 @@ function openEventStream(request, response) {
     Connection: 'keep-alive',
     'X-Accel-Buffering': 'no',
   });
-  response.write(`data: ${JSON.stringify({type: 'bridge_status', status: agentProcess ? 'ready' : 'idle', message: agentProcess ? 'Agent connected' : 'Agent idle'})}\n\n`);
+  response.write(`data: ${JSON.stringify({type: 'bridge_status', status: agentProcess ? 'ready' : 'idle', message: agentProcess ? '智能体已连接' : '智能体空闲'})}\n\n`);
   subscribers.add(response);
   const heartbeat = setInterval(() => response.write(': keepalive\n\n'), 15_000);
   request.on('close', () => {
@@ -235,10 +235,10 @@ function stopAgent(reason) {
   agentProcess = null;
   child.kill('SIGTERM');
   const message = reason === 'switch'
-    ? 'Switching workspace'
+    ? '正在切换工作区'
     : reason === 'config'
-      ? 'Configuration updated'
-      : 'Generation stopped';
+      ? '配置已更新'
+      : '生成已停止';
   broadcast({type: 'bridge_status', status: 'stopped', message});
 }
 
@@ -264,7 +264,7 @@ async function readJsonBody(request) {
   for await (const chunk of request) chunks.push(chunk);
   if (!chunks.length) return {};
   const text = Buffer.concat(chunks).toString('utf8');
-  if (text.length > 1_000_000) throw new Error('Request body is too large');
+  if (text.length > 1_000_000) throw new Error('请求内容过大');
   return JSON.parse(text);
 }
 
@@ -274,7 +274,7 @@ async function readBinaryBody(request, maxBytes) {
   for await (const chunk of request) {
     size += chunk.length;
     if (size > maxBytes) {
-      const error = new Error(`File exceeds the ${formatByteLimit(maxBytes)} upload limit`);
+      const error = new Error(`文件超过 ${formatByteLimit(maxBytes)} 的上传限制`);
       error.statusCode = 413;
       throw error;
     }
@@ -295,7 +295,7 @@ function sendJson(response, status, payload) {
 
 async function streamArtifact(response, sessionId, relativePath) {
   const filePath = resolveArtifactPath(repoRoot, sessionId, relativePath);
-  if (!existsSync(filePath)) return sendJson(response, 404, {error: 'Artifact not found'});
+  if (!existsSync(filePath)) return sendJson(response, 404, {error: '产物文件不存在'});
   response.writeHead(200, {
     'Content-Type': artifactContentType(filePath),
     'Cache-Control': 'private, max-age=60',

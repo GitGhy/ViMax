@@ -53,7 +53,7 @@ describe('web bridge state', () => {
     expect(history[0].text).toBe('Use this script');
   });
 
-  it('does not expose successful tool result payloads in restored history', async () => {
+  it('恢复历史时显示中文完成提示并隐藏工具结果载荷', async () => {
     const root = await fixture();
     await writeFile(path.join(root, '.vimax', 'logs', 'loop_history.jsonl'), `${JSON.stringify({
       session_id: 'session-1',
@@ -67,26 +67,26 @@ describe('web bridge state', () => {
     })}\n`);
     const history = await readSessionHistory(root, 'session-1');
     const activity = history.find((message) => message.role === 'activity');
-    expect(activity).toMatchObject({text: 'Completed', status: 'done', stage: 'completed'});
+    expect(activity).toMatchObject({text: '已完成', status: 'done', stage: 'completed'});
     expect(JSON.stringify(activity)).not.toContain('working_dir');
   });
 
-  it('lists media artifacts and blocks path traversal', async () => {
+  it('列出媒体产物并阻止路径越界', async () => {
     const root = await fixture();
     await writeFile(path.join(root, '.working_dir', 'session-1', 'script2video', 'shots', '0', 'first_frame.png'), 'image');
     const artifacts = await listSessionArtifacts(root, 'session-1');
     expect(artifacts[0]).toMatchObject({kind: 'image', name: 'first_frame.png'});
-    expect(() => resolveArtifactPath(root, 'session-1', '../../secrets')).toThrow(/escapes/);
+    expect(() => resolveArtifactPath(root, 'session-1', '../../secrets')).toThrow(/超出/);
   });
 
-  it('stores uploads inside the session without overwriting matching names', async () => {
+  it('将上传文件存入会话并保留同名文件', async () => {
     const root = await fixture();
     const first = await storeWorkspaceUpload(root, 'session-1', 'script.txt', Buffer.from('first'));
     const second = await storeWorkspaceUpload(root, 'session-1', 'script.txt', Buffer.from('second'));
     expect(first).toMatchObject({name: 'script.txt', path: 'uploads/script.txt', size: 5});
     expect(second).toMatchObject({name: 'script (2).txt', path: 'uploads/script (2).txt', size: 6});
     expect(await readFile(path.join(root, '.working_dir', 'session-1', second.path), 'utf8')).toBe('second');
-    await expect(storeWorkspaceUpload(root, 'session-1', '../escape.txt', Buffer.from('no'))).rejects.toThrow(/unsupported/);
+    await expect(storeWorkspaceUpload(root, 'session-1', '../escape.txt', Buffer.from('no'))).rejects.toThrow(/不支持/);
   });
 
   it('deletes project state, artifacts, and matching log records', async () => {

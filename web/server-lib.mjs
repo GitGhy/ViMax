@@ -27,7 +27,7 @@ export async function deleteSession(repoRoot, sessionId) {
   const statePath = path.join(repoRoot, '.vimax', 'sessions.json');
   const payload = JSON.parse(await readFile(statePath, 'utf8'));
   const sessions = payload.sessions && typeof payload.sessions === 'object' ? payload.sessions : {};
-  if (!sessions[sessionId]) throw new Error('Project not found');
+  if (!sessions[sessionId]) throw new Error('项目不存在');
 
   delete sessions[sessionId];
   const remaining = Object.values(sessions)
@@ -98,14 +98,14 @@ export async function readSessionHistory(repoRoot, sessionId) {
 export async function storeWorkspaceUpload(repoRoot, sessionId, fileName, data) {
   const sessionRoot = resolveSessionRoot(repoRoot, sessionId);
   const sessionInfo = await stat(sessionRoot);
-  if (!sessionInfo.isDirectory()) throw new Error('Session workspace is not a directory');
+  if (!sessionInfo.isDirectory()) throw new Error('会话工作区不是有效目录');
 
   const safeName = validateUploadName(fileName);
   const uploadRoot = path.join(sessionRoot, 'uploads');
   await mkdir(uploadRoot, {recursive: true, mode: 0o700});
   const uploadRootInfo = await lstat(uploadRoot);
   if (!uploadRootInfo.isDirectory() || uploadRootInfo.isSymbolicLink()) {
-    throw new Error('Workspace upload directory is not safe');
+    throw new Error('工作区上传目录不安全');
   }
 
   const extension = path.extname(safeName);
@@ -126,12 +126,12 @@ export async function storeWorkspaceUpload(repoRoot, sessionId, fileName, data) 
       throw error;
     }
   }
-  throw new Error('Could not allocate a unique upload filename');
+  throw new Error('无法为上传文件分配唯一文件名');
 }
 
 function historyToolResultText(result) {
-  if (result.ok !== false) return 'Completed';
-  const content = String(result.content || 'Tool failed').trim();
+  if (result.ok !== false) return '已完成';
+  const content = String(result.content || '工具执行失败').trim();
   try {
     const payload = JSON.parse(content);
     const detail = payload?.error ?? payload?.message;
@@ -143,7 +143,7 @@ function historyToolResultText(result) {
 }
 
 function conciseText(value) {
-  const text = String(value || 'Tool failed').replace(/\s+/g, ' ').trim();
+  const text = String(value || '工具执行失败').replace(/\s+/g, ' ').trim();
   return text.length > 280 ? `${text.slice(0, 277)}…` : text;
 }
 
@@ -202,7 +202,7 @@ export function resolveArtifactPath(repoRoot, sessionId, relativePath) {
   const sessionRoot = resolveSessionRoot(repoRoot, sessionId);
   const candidate = path.resolve(sessionRoot, String(relativePath || ''));
   if (candidate === sessionRoot || !candidate.startsWith(`${sessionRoot}${path.sep}`)) {
-    throw new Error('Artifact path escapes the active session');
+    throw new Error('产物路径超出当前会话目录');
   }
   return candidate;
 }
@@ -235,22 +235,22 @@ function resolveSessionRoot(repoRoot, sessionId) {
   const workingRoot = path.resolve(repoRoot, '.working_dir');
   const candidate = path.resolve(workingRoot, sessionId);
   if (!candidate.startsWith(`${workingRoot}${path.sep}`)) {
-    throw new Error('Session path escapes .working_dir');
+    throw new Error('会话路径超出 .working_dir 目录');
   }
   return candidate;
 }
 
 function assertSessionId(sessionId) {
   if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,95}$/.test(String(sessionId || ''))) {
-    throw new Error('Invalid session id');
+    throw new Error('会话标识无效');
   }
 }
 
 function validateUploadName(fileName) {
   const value = String(fileName || '').normalize('NFC').trim();
-  if (!value || value === '.' || value === '..') throw new Error('A valid filename is required');
-  if (value.length > 180) throw new Error('Filename must be 180 characters or fewer');
-  if (/[\\/\u0000-\u001f\u007f]/.test(value)) throw new Error('Filename contains unsupported characters');
+  if (!value || value === '.' || value === '..') throw new Error('请提供有效的文件名');
+  if (value.length > 180) throw new Error('文件名不能超过 180 个字符');
+  if (/[\\/\u0000-\u001f\u007f]/.test(value)) throw new Error('文件名包含不支持的字符');
   return value;
 }
 

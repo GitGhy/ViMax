@@ -1,5 +1,5 @@
 :root {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
   color: #20242a;
   background: #ffffff;
   font-synthesis: none;
@@ -1201,6 +1201,10 @@ a:focus-visible {
 .artifact-visuals {
   max-width: 1100px;
   margin: 0 auto;
+}
+
+.artifact-content-section {
+  container: artifact-content / inline-size;
 }
 
 .artifact-section-heading {
@@ -2749,6 +2753,37 @@ html[data-theme='dark'] .storyboard-panel > footer button:hover:not(:disabled) {
 @keyframes dialog-in {
   from {opacity: 0; transform: translateY(5px) scale(0.99);}
   to {opacity: 1; transform: translateY(0) scale(1);}
+}
+
+@container artifact-content (max-width: 900px) {
+  .artifact-document.has-related-visuals .artifact-document-layout {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .artifact-related-visuals {
+    padding: 22px 0 4px;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}
+
+@container artifact-content (max-width: 680px) {
+  .artifact-browser {
+    grid-template-columns: 1fr;
+  }
+
+  .artifact-document-list {
+    max-height: 220px;
+    padding: 12px 0;
+    overflow: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .artifact-document {
+    padding: 20px 0 30px;
+  }
 }
 
 @media (max-width: 1040px) {
