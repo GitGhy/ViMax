@@ -2,7 +2,7 @@
 
 日常部署先看 [精简部署步骤](deployment.md)。本附录保留完整的环境安装、常驻服务、反向代理、备份迁移和排错说明，按需查阅。
 
-本文对应 `codex/secondary-development` 分支的光合云版本，代码基线为 `b5b2c4b`，编写日期为 2026-09-20。按 **Ubuntu 24.04、单台服务器、单个 ViMax 实例** 部署，目录统一为 `/opt/vimax/app`，运行账户为 `vimax`。其他系统需要调整系统依赖和服务管理命令。
+本文对应 `codex/secondary-development` 分支的光合云版本，更新日期为 2026-09-21。按 **Ubuntu 24.04、单台服务器、单个 ViMax 实例** 部署，目录统一为 `/home/ubuntu/ghy/ViMax`，直接使用当前登录的 `ubuntu` 账户。其他系统需要调整系统依赖和服务管理命令。
 
 当前版本已在本地完成一轮生成，本文的服务器配置示例需要在目标服务器上按步骤验证。光合云接口细节见 [光合云 AI 接入说明](ghyai.md)。
 
@@ -27,7 +27,7 @@
 
 ## 2. 准备服务器环境
 
-以下命令在服务器的管理员账户中执行，需要 `sudo` 权限。
+以下服务器命令均在当前 `ubuntu` 账户中执行。安装系统软件、配置和管理系统服务时使用 `sudo`；拉取代码、安装项目依赖和构建时直接执行。
 
 安装系统依赖：
 
@@ -52,57 +52,33 @@ ffmpeg -version
 
 如果使用 NVM 或其他路径下的 Node.js，后续 systemd 的 `ExecStart` 必须改成 `command -v node` 输出的绝对路径；systemd 不会自动加载交互终端中的 NVM 配置。
 
-创建专用运行账户和目录。下面两条命令用于首次部署；账户已经存在时不用重复创建：
+服务器需要能访问 Python/npm 软件源和 `https://ghy-ai.com`。通过 SSH 隧道或 Nginx 访问时，无需对公网开放 4173 端口。
+
+## 3. 拉取代码并安装依赖
+
+### 3.1 使用 Git 克隆
+
+在服务器的当前 `ubuntu` 终端执行：
 
 ```bash
-sudo useradd --system --create-home --home-dir /opt/vimax --shell /bin/bash vimax
-sudo install -d -o vimax -g vimax -m 0750 /opt/vimax/app
+mkdir -p /home/ubuntu/ghy
+git clone -b codex/secondary-development https://github.com/GitGhy/ViMax.git /home/ubuntu/ghy/ViMax
+cd /home/ubuntu/ghy/ViMax
 ```
 
-服务器需要能访问 Python/npm 软件源和 `https://ghy-ai.com`。无需对公网开放 4173 端口。
-
-## 3. 上传当前版本并安装依赖
-
-### 3.1 从当前开发电脑打包
-
-当前二次开发代码已在本地提交；不假设该分支已经推送到远程仓库。下面从已提交的 `HEAD` 打包，不包含本地 Key、历史项目、虚拟环境或生成产物。
-
-在开发电脑执行，将 `deploy@YOUR_SERVER` 替换为实际服务器登录账户和地址：
-
-```bash
-cd /home/ghy/PycharmProjects/ViMax
-git status --short
-git log -1 --oneline
-git archive --format=tar.gz --output=/tmp/vimax-release.tar.gz HEAD
-scp /tmp/vimax-release.tar.gz deploy@YOUR_SERVER:/tmp/vimax-release.tar.gz
-```
-
-`git archive HEAD` 只包含已提交文件。后续修改要先提交，再重新打包。迁移现有项目数据另见第 9 节。
-
-在服务器管理员账户中解压到首次创建的空目录：
-
-```bash
-sudo tar -xzf /tmp/vimax-release.tar.gz -C /opt/vimax/app
-sudo chown -R vimax:vimax /opt/vimax/app
-```
+已经克隆过则跳过 `git clone`，后续用第 10 节的 `git pull --ff-only` 更新。Git 获取远程仓库中已提交并推送的代码，不包含本地 Key、历史项目或生成产物；迁移现有数据见第 9 节。
 
 ### 3.2 安装 Python 和项目依赖
-
-切换到运行账户，后续安装、配置和手动启动命令均在该账户中执行：
-
-```bash
-sudo -iu vimax
-```
 
 使用 [uv 官方安装器](https://docs.astral.sh/uv/getting-started/installation/) 安装 uv，再安装 Python 3.12：
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh -o /opt/vimax/uv-install.sh
-sh /opt/vimax/uv-install.sh
-/opt/vimax/.local/bin/uv --version
-/opt/vimax/.local/bin/uv python install 3.12
-cd /opt/vimax/app
-/opt/vimax/.local/bin/uv sync --locked --python 3.12 --no-dev
+curl -LsSf https://astral.sh/uv/install.sh -o /home/ubuntu/uv-install.sh
+sh /home/ubuntu/uv-install.sh
+/home/ubuntu/.local/bin/uv --version
+/home/ubuntu/.local/bin/uv python install 3.12
+cd /home/ubuntu/ghy/ViMax
+/home/ubuntu/.local/bin/uv sync --locked --python 3.12 --no-dev
 ```
 
 `--locked` 使用仓库锁定的依赖，锁文件与项目不一致时直接报错；`--no-dev` 跳过 Python 测试依赖。参数含义见 [uv 同步说明](https://docs.astral.sh/uv/concepts/projects/sync/)。不要将开发电脑的虚拟环境复制到服务器，按上述命令重新创建。
@@ -110,31 +86,33 @@ cd /opt/vimax/app
 安装 Web 依赖并构建网页：
 
 ```bash
-npm --prefix /opt/vimax/app/web ci --include=dev
-npm --prefix /opt/vimax/app/web run build
-mkdir -p /opt/vimax/app/.vimax /opt/vimax/app/.working_dir
+npm --prefix /home/ubuntu/ghy/ViMax/web ci --include=dev
+npm --prefix /home/ubuntu/ghy/ViMax/web run build
+mkdir -p /home/ubuntu/ghy/ViMax/.vimax /home/ubuntu/ghy/ViMax/.working_dir
 ```
 
-`npm ci` 使用 `package-lock.json`。构建需要 Vite 等开发依赖，因此这里使用 `--include=dev`。构建产物位于 `/opt/vimax/app/web/dist`。
+`npm ci` 使用 `package-lock.json`。构建需要 Vite 等开发依赖，因此这里使用 `--include=dev`。构建产物位于 `/home/ubuntu/ghy/ViMax/web/dist`。
 
 检查 Python 运行库：
 
 ```bash
-/opt/vimax/app/.venv/bin/python --version
-FFMPEG_BINARY=/usr/bin/ffmpeg /opt/vimax/app/.venv/bin/python -c 'import cv2, moviepy, httpx, yaml; print("Python 运行依赖正常")'
+/home/ubuntu/ghy/ViMax/.venv/bin/python --version
+FFMPEG_BINARY=/usr/bin/ffmpeg /home/ubuntu/ghy/ViMax/.venv/bin/python -c 'import cv2, moviepy, httpx, yaml; print("Python 运行依赖正常")'
 ```
 
 ## 4. 配置光合云
 
-仍使用 `vimax` 账户。首次创建配置时复制示例；已经存在的配置不会被以下命令覆盖：
+仍使用 `ubuntu` 账户。首次创建配置时复制示例；已经存在的配置不会被以下命令覆盖：
 
 ```bash
-test -e /opt/vimax/app/configs/agent.local.yaml || cp /opt/vimax/app/configs/agent.ghyai.example.yaml /opt/vimax/app/configs/agent.local.yaml
-chmod 600 /opt/vimax/app/configs/agent.local.yaml
-nano /opt/vimax/app/configs/agent.local.yaml
+cd /home/ubuntu/ghy/ViMax
+test -e configs/agent.local.yaml || \
+  cp configs/agent.ghyai.example.yaml configs/agent.local.yaml
+chmod 600 configs/agent.local.yaml
+nano configs/agent.local.yaml
 ```
 
-主要配置如下，将占位文字替换为服务器要使用的 API Key：
+主要配置如下，将占位文字替换为服务器要使用的 API Key。编辑后按 `Ctrl+O`，出现 `File Name to Write` 时按回车确认保存，再按 `Ctrl+X` 退出：
 
 ```yaml
 llm:
@@ -160,8 +138,8 @@ video:
 在项目根目录检查模型和能力；该命令只查询目录，不提交生成任务：
 
 ```bash
-cd /opt/vimax/app
-/opt/vimax/app/.venv/bin/python -m scripts.check_ghyai
+cd /home/ubuntu/ghy/ViMax
+/home/ubuntu/ghy/ViMax/.venv/bin/python -m scripts.check_ghyai
 ```
 
 如需测试真实调用，可加 `--chat`、`--image` 或 `--video`，这些参数会产生 API 用量，具体用法见光合云接入说明。
@@ -187,16 +165,16 @@ cd /opt/vimax/app
 
 ## 5. 首次手动启动
 
-使用 `vimax` 账户，从项目根目录运行生产服务：
+使用 `ubuntu` 账户，从项目根目录运行生产服务：
 
 ```bash
-cd /opt/vimax/app
+cd /home/ubuntu/ghy/ViMax
 VIMAX_WEB_HOST=127.0.0.1 \
 VIMAX_WEB_PORT=4173 \
-VIMAX_PYTHON_CMD=/opt/vimax/app/.venv/bin/python \
+VIMAX_PYTHON_CMD=/home/ubuntu/ghy/ViMax/.venv/bin/python \
 FFMPEG_BINARY=/usr/bin/ffmpeg \
 IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg \
-/usr/bin/node /opt/vimax/app/web/server.mjs
+/usr/bin/node /home/ubuntu/ghy/ViMax/web/server.mjs
 ```
 
 该命令提供已构建的生产网页。仓库的 `./vimax web start` 也是生产入口；`./vimax web` 默认运行开发模式。
@@ -216,19 +194,21 @@ curl -N --max-time 20 http://127.0.0.1:4173/api/events
 
 `agentRunning: false` 表示还没有从网页打开工作区，不代表 Web 服务异常。SSE 检查应先收到 `data:` 事件，随后约每 15 秒收到 `: keepalive`；20 秒后的 curl 超时是此检查主动设置的结束条件。
 
-没有域名时，可在开发电脑建立 SSH 隧道：
+没有域名时，可在自己的电脑建立 SSH 隧道，将 `YOUR_SERVER` 换成服务器地址：
 
 ```bash
-ssh -N -L 127.0.0.1:14173:127.0.0.1:4173 deploy@YOUR_SERVER
+ssh -N -L 127.0.0.1:14173:127.0.0.1:4173 ubuntu@YOUR_SERVER
 ```
 
 浏览器打开 `http://127.0.0.1:14173`。这里使用 14173 避免与开发电脑原有的 4173 服务冲突。服务器上的 4173 仍只监听回环地址。
 
-检查完成后，在运行 Node.js 的终端按 `Ctrl+C`，再输入 `exit` 回到管理员账户，配置常驻服务。
+检查完成后，在运行 Node.js 的终端按 `Ctrl+C`，继续配置常驻服务。
 
 ## 6. 配置 systemd 常驻运行
 
-以管理员身份创建 `/etc/systemd/system/vimax.service`：
+在当前 `ubuntu` 终端使用 `sudo` 创建 `/etc/systemd/system/vimax.service`，服务也以 `ubuntu` 账户运行：
+
+下面默认监听 `127.0.0.1`，适用于 SSH 隧道或 Nginx。**直接通过公网 IP 访问 4173 时，将其中的监听设置改为 `Environment=VIMAX_WEB_HOST=0.0.0.0`**，在安全组和防火墙中允许你电脑的公网 IP 访问 TCP 4173，然后打开 `http://服务器公网IP:4173`。应用没有登录验证，请限制访问来源。手动启动时同样修改第 5 节的 `VIMAX_WEB_HOST`。
 
 ```bash
 sudo tee /etc/systemd/system/vimax.service > /dev/null <<'EOF'
@@ -239,16 +219,16 @@ After=network-online.target
 
 [Service]
 Type=simple
-User=vimax
-Group=vimax
-WorkingDirectory=/opt/vimax/app
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/ghy/ViMax
 Environment=VIMAX_WEB_HOST=127.0.0.1
 Environment=VIMAX_WEB_PORT=4173
-Environment=VIMAX_PYTHON_CMD=/opt/vimax/app/.venv/bin/python
+Environment=VIMAX_PYTHON_CMD=/home/ubuntu/ghy/ViMax/.venv/bin/python
 Environment=PYTHONUNBUFFERED=1
 Environment=FFMPEG_BINARY=/usr/bin/ffmpeg
 Environment=IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
-ExecStart=/usr/bin/node /opt/vimax/app/web/server.mjs
+ExecStart=/usr/bin/node /home/ubuntu/ghy/ViMax/web/server.mjs
 Restart=on-failure
 RestartSec=5
 KillMode=control-group
@@ -268,6 +248,13 @@ curl -fsS http://127.0.0.1:4173/api/health
 
 Node.js 的子进程继承上面的 Python 路径和 FFmpeg 配置。服务停止时，systemd 同时清理该服务的 Python/FFmpeg 子进程。
 
+修改已经运行的服务配置后，执行以下命令使新监听地址生效：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart vimax
+```
+
 常用管理命令：
 
 ```bash
@@ -282,9 +269,9 @@ systemd 会在 Web 主进程异常退出后重启服务，不会自动续跑被�
 
 ## 7. 可选：Nginx、HTTPS 与访问认证
 
-只通过 SSH 隧道使用时可以跳过本节。需要域名访问时，先将域名解析到服务器，并准备该域名的有效证书和私钥；示例统一使用 `vimax.example.com`，部署时全部替换。
+只通过 SSH 隧道使用时可以跳过本节。使用本节代理时，Web 服务的 `VIMAX_WEB_HOST` 保持 `127.0.0.1`；若之前改成了 `0.0.0.0`，改回后重启服务。需要域名访问时，先将域名解析到服务器，并准备该域名的有效证书和私钥；示例统一使用 `vimax.example.com`，部署时全部替换。
 
-安装 Nginx 和密码文件工具，创建访问账户。这里的账户与光合云 API Key 无关，密码由命令交互输入：
+安装 Nginx 和密码文件工具，设置网页访问用户名和密码。这是浏览器的访问认证，与 Linux 登录账户和光合云 API Key 无关，密码由命令交互输入：
 
 ```bash
 sudo apt-get install -y nginx apache2-utils
@@ -367,19 +354,19 @@ curl -u vimaxviewer -N --max-time 20 https://vimax.example.com/api/events
 
 | 服务器路径 | 数据 |
 | --- | --- |
-| `/opt/vimax/app/.vimax` | 会话索引、聊天/工具日志、偏好、待办和摘要 |
-| `/opt/vimax/app/.working_dir` | 项目文档、上传文件、图片、视频、渲染状态及光合云任务记录 |
-| `/opt/vimax/app/configs/agent.local.yaml` | 模型地址和 API Key |
+| `/home/ubuntu/ghy/ViMax/.vimax` | 会话索引、聊天/工具日志、偏好、待办和摘要 |
+| `/home/ubuntu/ghy/ViMax/.working_dir` | 项目文档、上传文件、图片、视频、渲染状态及光合云任务记录 |
+| `/home/ubuntu/ghy/ViMax/configs/agent.local.yaml` | 模型地址和 API Key |
 
-它们默认被 Git 忽略，代码包不会自动携带这些数据。备份包含明文 Key，应保存到受控目录；持久化目录不要改为临时目录。
+它们默认被 Git 忽略，Git 拉取不会同步这些数据。备份包含明文 Key，应保存到受控目录；持久化目录不要改为临时目录。
 
-在任务结束后，以管理员身份执行一致性备份：
+在任务结束后，从当前 `ubuntu` 终端执行一致性备份：
 
 ```bash
 sudo systemctl stop vimax
 vimax_backup_dir="/var/backups/vimax/$(date +%Y%m%d-%H%M%S)"
 sudo install -d -m 0700 "$vimax_backup_dir"
-sudo tar -czf "$vimax_backup_dir/data.tar.gz" -C /opt/vimax/app .vimax .working_dir configs/agent.local.yaml
+sudo tar -czf "$vimax_backup_dir/data.tar.gz" -C /home/ubuntu/ghy/ViMax .vimax .working_dir configs/agent.local.yaml
 sudo chmod 600 "$vimax_backup_dir/data.tar.gz"
 sudo cp /etc/systemd/system/vimax.service "$vimax_backup_dir/vimax.service"
 sudo systemctl start vimax
@@ -393,10 +380,10 @@ sudo systemctl start vimax
 
 ```bash
 sudo systemctl stop vimax
-sudo tar -xzf /tmp/vimax-data.tar.gz -C /opt/vimax/app
-sudo chown -R vimax:vimax /opt/vimax/app/.vimax /opt/vimax/app/.working_dir
-sudo chown vimax:vimax /opt/vimax/app/configs/agent.local.yaml
-sudo chmod 600 /opt/vimax/app/configs/agent.local.yaml
+sudo tar -xzf /tmp/vimax-data.tar.gz -C /home/ubuntu/ghy/ViMax
+sudo chown -R ubuntu:ubuntu /home/ubuntu/ghy/ViMax/.vimax /home/ubuntu/ghy/ViMax/.working_dir
+sudo chown ubuntu:ubuntu /home/ubuntu/ghy/ViMax/configs/agent.local.yaml
+sudo chmod 600 /home/ubuntu/ghy/ViMax/configs/agent.local.yaml
 sudo systemctl start vimax
 ```
 
@@ -406,11 +393,36 @@ sudo systemctl start vimax
 
 ## 10. 更新与回退
 
-升级前先完成第 9 节备份，并保留旧代码包或提交号。当前上传方式是 `git archive`，服务器目录里没有 `.git`，不能直接在该目录运行 `git pull`。
+升级前等待任务结束，完成第 9 节备份。在当前 `ubuntu` 终端检查分支和本地修改，并记下旧提交号：
 
-升级时停止服务，将旧应用目录整体保留到另一个位置，在 `/opt/vimax/app` 建立新的空目录并解压新代码包，恢复备份数据，再以 `vimax` 账户重新执行 Python 依赖安装、Web 依赖安装和构建。检查文件所有者正确后启动服务，执行健康检查和一次项目读取。
+```bash
+cd /home/ubuntu/ghy/ViMax
+git branch --show-current
+git status --short
+git rev-parse HEAD
+```
 
-若新版本启动失败，停止服务，把旧目录恢复到 `/opt/vimax/app`，再启动服务。回退代码不等于自动回退期间产生的数据变更；需要恢复数据时使用对应版本备份，先保留当前数据副本。
+确认分支为 `codex/secondary-development`，并先处理服务器上的代码修改，再执行更新。以下命令适用于第 6 节的 systemd 服务；括号内任一步失败会停止后续操作：
+
+```bash
+(
+  set -e
+  cd /home/ubuntu/ghy/ViMax
+  sudo systemctl stop vimax
+  git pull --ff-only
+  /home/ubuntu/.local/bin/uv sync --locked --python 3.12 --no-dev
+  npm --prefix /home/ubuntu/ghy/ViMax/web ci --include=dev
+  npm --prefix /home/ubuntu/ghy/ViMax/web run build
+  sudo systemctl start vimax
+  curl --retry 5 --retry-connrefused --retry-delay 1 -fsS http://127.0.0.1:4173/api/health
+)
+```
+
+更新后打开网页，确认项目和历史产物可读取。若拉取、依赖安装或构建失败，服务会保持停止，处理报错后再继续；`git pull --ff-only` 拒绝更新时，先检查分支分叉或本地修改。
+
+需要回退时，停止服务，在工作区干净的前提下执行 `git switch --detach <之前记录的提交号>`，重新安装依赖、构建并启动服务。恢复分支更新前执行 `git switch codex/secondary-development`。回退代码不会撤销数据变更；恢复对应版本备份前先保留当前数据副本。
+
+如果使用第 5 节的手动启动方式，用 `Ctrl+C` 停止服务，完成同样的拉取、依赖安装和构建步骤，再按第 5 节启动。
 
 ## 11. 常见问题
 
@@ -418,23 +430,23 @@ sudo systemctl start vimax
 | --- | --- |
 | 网页返回 502 | 先访问服务器本地 `/api/health`，再检查 `systemctl status vimax`、服务日志及代理端口 |
 | `agentRunning: false` | 在网页打开/新建项目；若仍失败，检查 Python 路径、Key 和 `journalctl` 中的子进程错误 |
-| `uv: command not found` 或 Python 缺包 | systemd 使用明确的 `VIMAX_PYTHON_CMD=/opt/vimax/app/.venv/bin/python`，不要依赖交互终端 PATH |
+| `uv: command not found` 或 Python 缺包 | systemd 使用明确的 `VIMAX_PYTHON_CMD=/home/ubuntu/ghy/ViMax/.venv/bin/python`，不要依赖交互终端 PATH |
 | 缺少 `libGL.so.1` 或 `libgthread-2.0.so.0` | 检查第 2 节的 OpenCV 系统运行库是否安装 |
 | FFmpeg 找不到或视频拼接失败 | 检查 `/usr/bin/ffmpeg`、服务环境、磁盘空间，并用运行账户导入 MoviePy |
-| 网页提示找不到构建文件 | 以 `vimax` 账户运行 Web 构建，确认 `/opt/vimax/app/web/dist/index.html` 存在 |
+| 网页提示找不到构建文件 | 以 `ubuntu` 账户运行 Web 构建，确认 `/home/ubuntu/ghy/ViMax/web/dist/index.html` 存在 |
 | 看不到实时进度 | 检查 `/api/events` 是否持续返回事件、反向代理是否缓冲 SSE、认证是否覆盖该接口 |
 | 上传返回 413 | 同时检查 Nginx 的 `client_max_body_size` 和 `VIMAX_WEB_UPLOAD_MAX_BYTES` |
 | API 返回 401/403 | 检查 Key 和授权能力；使用运行账户在项目根目录执行模型检查脚本 |
 | 视频轮询超时 | 保留镜头旁的 `.ghyai.json`，按已有视频 ID 恢复查询；不要为重试直接删除任务记录 |
 | 输出被截断 | 检查 `output_length_exceeded`，调整规划输出额度或缩短任务；不要无限重试 |
-| 文件写入权限错误 | 检查数据目录、本地配置及其父目录是否允许 `vimax` 账户写入；配置保存需要创建临时文件 |
+| 文件写入权限错误 | 检查数据目录、本地配置及其父目录是否允许 `ubuntu` 账户写入；配置保存需要创建临时文件 |
 | 配置修改未生效 | 检查环境变量覆盖，并在空闲时重新打开工作区或重启服务 |
 
 磁盘使用情况可直接检查：
 
 ```bash
-sudo du -sh /opt/vimax/app/.working_dir /opt/vimax/app/.vimax
-df -h /opt/vimax/app
+sudo du -sh /home/ubuntu/ghy/ViMax/.working_dir /home/ubuntu/ghy/ViMax/.vimax
+df -h /home/ubuntu/ghy/ViMax
 ```
 
-应用日志位于 `/opt/vimax/app/.vimax/logs`，服务进程日志通过 `journalctl -u vimax` 查看。光合云错误里的 `X-Request-ID` 与平台聊天调用日志的数字业务 ID 可能不同，排查时同时记录时间、模型和错误信息。
+应用日志位于 `/home/ubuntu/ghy/ViMax/.vimax/logs`，服务进程日志通过 `journalctl -u vimax` 查看。光合云错误里的 `X-Request-ID` 与平台聊天调用日志的数字业务 ID 可能不同，排查时同时记录时间、模型和错误信息。
