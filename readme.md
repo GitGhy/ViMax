@@ -237,6 +237,8 @@ cp configs/agent.example.yaml configs/agent.local.yaml
 Then configure the model and API key information in `configs/agent.local.yaml`, including the LLM, image generator, and video generator, as shown below.
 
 光合云用户请参阅 [光合云 AI 接入说明](docs/ghyai.md)，使用 `configs/agent.ghyai.example.yaml` 作为配置示例。
+
+服务器启动见 [快速部署](docs/deployment.md)；systemd、Nginx 和数据迁移见 [部署附录](docs/deployment-reference.md)。
 ```yaml
 llm:
   model_provider: openai

@@ -237,6 +237,8 @@ vimax tui resume <session_id>
 
 Web UI 与 TUI 共用同一套 ViMax agent runtime、session、tools 和私有的 `configs/agent.local.yaml` 配置。运行 Web UI 需要 Node.js 18 或更高版本。
 
+服务器启动见 [快速部署](docs/deployment.md)；systemd、Nginx 和数据备份见 [部署附录](docs/deployment-reference.md)。
+
 在 `ViMax` 仓库根目录中，首次使用时安装前端依赖，然后启动本地服务：
 
 ```bash
